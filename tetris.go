@@ -21,6 +21,7 @@ const BrickSize int32 = 30      // This doesn't
 const BorderSize int32 = (TotalBrickSize - BrickSize) / 2
 
 var shapes = [7]string{"sshape", "zshape", "jshape", "lshape", "tshape", "ishape", "oshape"}
+var scoreMultiplier float32 = 1.0
 
 var PlayArea [21][10]brick
 
@@ -36,6 +37,7 @@ func CheckFullLine() {
 				break
 			}
 			if x == 9 {
+				scoreMultiplier -= 0.02
 				for i := y; i > 0; i-- {
 					PlayArea[i] = PlayArea[i-1]
 				}
@@ -100,6 +102,11 @@ func MovePawn(pawn []raylib.Vector2, key int8) (fallen bool) {
 			}
 		}
 	} else if key == 3 { //3 = soft drop
+		for i := 0; i < 4; i++ {
+			if pawn[i].Y < 0 {
+				return
+			}
+		}
 		fallen = MovePawn(pawn[:], 0)
 		return
 	} else if key == 4 { //4 = hard drop
@@ -433,6 +440,7 @@ func main() {
 	var frame int64
 	var gameOver bool = false
 	var isFallen bool = false
+	var gameSpeed float32
 
 	var cs int8 = 0
 	var cr int8 = 0
@@ -442,22 +450,11 @@ func main() {
 
 	rand.Seed(time.Now().UTC().UnixNano())
 
-	for y := int32(11); y < 21; y++ {
-		for x := int32(0); x < 10; x++ {
-			PlayArea[y][x].IsFull = false
-		}
-	}
-
 	for i := int8(0); i < 5; i++ { //
-		nextShapes[i] = 1 //int8(rand.Intn(7))
+		nextShapes[i] = int8(rand.Intn(7))
 	}
 
 	updateNextShape(nextShapes[:])
-
-	PlayArea[20][5].IsFull = true
-	PlayArea[15][3].IsFull = false
-	PlayArea[13][1].IsFull = false
-	PlayArea[11][7].IsFull = false
 
 	raylib.InitWindow(windowx, windowy, "Tetris!")
 
@@ -481,22 +478,24 @@ func main() {
 				MovePawn(pawn[:], 2)
 			}
 			if raylib.IsKeyDown(raylib.KeyM) { //M is soft drop
-				isFallen = MovePawn(pawn[:], 3)
-				if isFallen {
-					for i := 0; i < 4; i++ {
-						if pawn[i].Y < 0 {
-							gameOver = true
-							fmt.Println("Game over called in soft drop!")
-							break
-						} else {
-							PlayArea[int(pawn[i].Y)][int(pawn[i].X)].IsFull = true
+				if frame%2 == 0 {
+					isFallen = MovePawn(pawn[:], 3)
+					if isFallen {
+						for i := 0; i < 4; i++ {
+							if pawn[i].Y < 0 {
+								gameOver = true
+								fmt.Println("Game over called in soft drop!")
+								break
+							} else {
+								PlayArea[int(pawn[i].Y)][int(pawn[i].X)].IsFull = true
+							}
 						}
-					}
-					if !gameOver {
-						Createpawn(pawn[:], nextShapes[0])
-						*currentShape = nextShapes[0]
-						*currentRotation = 0
-						updateNextShape(nextShapes[:])
+						if !gameOver {
+							Createpawn(pawn[:], nextShapes[0])
+							*currentShape = nextShapes[0]
+							*currentRotation = 0
+							updateNextShape(nextShapes[:])
+						}
 					}
 				}
 
@@ -536,7 +535,9 @@ func main() {
 
 		frame++
 		if !gameOver {
-			if frame%6000 == 0 {
+			gameSpeed = 60 * scoreMultiplier
+			fmt.Println(gameSpeed)
+			if frame%int64(gameSpeed) == 0 {
 				isFallen = MovePawn(pawn[:], 0)
 
 				if isFallen {
