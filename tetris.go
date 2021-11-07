@@ -3,14 +3,13 @@
 package main
 
 import (
-	"fmt"
 	"math/rand"
 	"time"
 
 	raylib "github.com/gen2brain/raylib-go/raylib"
 )
 
-const windowx, windowy int32 = 500, 723 // orig :363, 723
+const windowx, windowy int32 = 500, 723
 
 const PlayAreax int32 = 360
 const PlayAreay int32 = 720
@@ -20,14 +19,20 @@ const TotalBrickSize int32 = 36 // This includes borders
 const BrickSize int32 = 30      // This doesn't
 const BorderSize int32 = (TotalBrickSize - BrickSize) / 2
 
-var shapes = [7]string{"sshape", "zshape", "jshape", "lshape", "tshape", "ishape", "oshape"}
 var scoreMultiplier float32 = 1.0
+var gameOver bool = false
 
 var PlayArea [21][10]brick
 
 type brick struct {
 	color  int8 //
 	IsFull bool
+}
+
+type pawn struct {
+	shapeId     int8
+	originPoint raylib.Vector2
+	bricksLocal []raylib.Vector2
 }
 
 func CheckFullLine() {
@@ -46,384 +51,118 @@ func CheckFullLine() {
 	}
 }
 
-func MovePawn(pawn []raylib.Vector2, key int8) (fallen bool) {
-	fallen = false
-	var pathClear bool = true
-	//##############################################################################################
-	if key == 0 {
-		for i := 0; i < 4; i++ {
-			if int(pawn[i].Y)+1 >= 2 && pawn[i].Y+1 < 21 {
-				if PlayArea[int(pawn[i].Y)+1][int(pawn[i].X)].IsFull {
-					pathClear = false
-				}
-			}
-			if int(pawn[i].Y) == 20 {
-				pathClear = false
-			}
-		}
-		if pathClear {
-			for i := 0; i < 4; i++ {
-				pawn[i].Y = pawn[i].Y + 1
-			}
-		} else {
-			fallen = true
-			return
-		}
-		//##############################################################################################
-	} else if key == 1 { //1 = left
-		for i := 0; i < 4; i++ {
-			if pawn[i].X == 0 {
-				pathClear = false
-			} else if pawn[i].Y > 0 && pawn[i].Y < 21 {
-				if PlayArea[int(pawn[i].Y)][int(pawn[i].X-1)].IsFull {
-					pathClear = false
-				}
-			}
-		}
-		if pathClear {
-			for i := 0; i < 4; i++ {
-				pawn[i].X = pawn[i].X - 1
-			}
-		}
-		//##############################################################################################
-	} else if key == 2 { //2 = Right
-		for i := 0; i < 4; i++ {
-			if pawn[i].X == 9 {
-				pathClear = false
-			} else if pawn[i].Y > 0 && pawn[i].Y < 21 {
-				if PlayArea[int(pawn[i].Y)][int(pawn[i].X+1)].IsFull {
-					pathClear = false
-				}
-			}
-		}
-		if pathClear {
-			for i := 0; i < 4; i++ {
-				pawn[i].X = pawn[i].X + 1
-			}
-		}
-	} else if key == 3 { //3 = soft drop
-		for i := 0; i < 4; i++ {
-			if pawn[i].Y < 0 {
-				return
-			}
-		}
-		fallen = MovePawn(pawn[:], 0)
-		return
-	} else if key == 4 { //4 = hard drop
+func MovePawn(pawn *pawn, direction raylib.Vector2) (fallen bool) { //todo: Needs to adapt to new pawn format
 
-		fallen = MovePawn(pawn[:], 0)
-		for {
-			if !fallen {
-				fallen = MovePawn(pawn[:], 0)
-			} else {
-				break
+	fallen = false
+
+	for i := 0; i < 4; i++ {
+		newLocation := raylib.Vector2{
+			pawn.bricksLocal[i].X + pawn.originPoint.X + direction.X,
+			pawn.bricksLocal[i].Y + pawn.originPoint.Y + direction.Y}
+		if newLocation.X < 0 || newLocation.X > 9 {
+			return false //Don't move if pawn is somehow out of bounds
+		} else if (newLocation.Y > 20) || (newLocation.Y > 0 && PlayArea[int(newLocation.Y)][int(newLocation.X)].IsFull) {
+
+			if direction.Y > 0 { //make the pawn solid if there is an obstacle below
+				for x := 0; x < 4; x++ {
+					if (pawn.bricksLocal[x].Y + pawn.originPoint.Y) < 0 { //If the solid block is above the ceiling call gameover
+						gameOver = true
+						return true
+					}
+					PlayArea[int(pawn.bricksLocal[x].Y+pawn.originPoint.Y)][int(pawn.bricksLocal[x].X+pawn.originPoint.X)].IsFull = true //make the current positions solid if next positions are blocked
+				}
+
+				fallen = true
+				return fallen
+
+			}
+			if direction.X != 0 { //Don't move if the newLocation is blocked
+				fallen = false
+				return fallen
 			}
 		}
-		return
 	}
-	return
+
+	pawn.originPoint = raylib.Vector2Add(pawn.originPoint, direction) //Move pawn
+
+	return fallen
 }
 
-func Createpawn(pawn []raylib.Vector2, randNum int8) {
+func Createpawn(currentPawn *pawn, randNum int8) {
+
+	currentPawn.bricksLocal = nil //We are clearing the slice here.
+	currentPawn.originPoint = raylib.Vector2{5, -1}
+
 	switch randNum {
 	case 0: //Sshape
-		pawn[0].X = 5
-		pawn[0].Y = -1
-		pawn[1].X = 6
-		pawn[1].Y = -1
-		pawn[2].X = 4
-		pawn[2].Y = 0
-		pawn[3].X = 5
-		pawn[3].Y = 0
+		currentPawn.bricksLocal = append(currentPawn.bricksLocal[:], raylib.Vector2{0, 0}) //origin Brick's local coordinate
+		currentPawn.bricksLocal = append(currentPawn.bricksLocal[:], raylib.Vector2{-1, 0})
+		currentPawn.bricksLocal = append(currentPawn.bricksLocal[:], raylib.Vector2{0, -1})
+		currentPawn.bricksLocal = append(currentPawn.bricksLocal[:], raylib.Vector2{1, -1})
 	case 1: //Zshape
-		pawn[0].X = 5
-		pawn[0].Y = -1
-		pawn[1].X = 4
-		pawn[1].Y = -1
-		pawn[2].X = 5
-		pawn[2].Y = 0
-		pawn[3].X = 6
-		pawn[3].Y = 0
+		currentPawn.bricksLocal = append(currentPawn.bricksLocal[:], raylib.Vector2{0, 0})
+		currentPawn.bricksLocal = append(currentPawn.bricksLocal[:], raylib.Vector2{1, 0})
+		currentPawn.bricksLocal = append(currentPawn.bricksLocal[:], raylib.Vector2{0, -1})
+		currentPawn.bricksLocal = append(currentPawn.bricksLocal[:], raylib.Vector2{-1, -1})
 	case 2: //Jshape
-		pawn[0].X = 5
-		pawn[0].Y = -1
-		pawn[1].X = 5
-		pawn[1].Y = -2
-		pawn[2].X = 4
-		pawn[2].Y = 0
-		pawn[3].X = 5
-		pawn[3].Y = 0
+		currentPawn.bricksLocal = append(currentPawn.bricksLocal[:], raylib.Vector2{0, 0})
+		currentPawn.bricksLocal = append(currentPawn.bricksLocal[:], raylib.Vector2{0, -1})
+		currentPawn.bricksLocal = append(currentPawn.bricksLocal[:], raylib.Vector2{0, 1})
+		currentPawn.bricksLocal = append(currentPawn.bricksLocal[:], raylib.Vector2{-1, 1})
 	case 3: //Lshape
-		pawn[0].X = 5
-		pawn[0].Y = -1
-		pawn[1].X = 5
-		pawn[1].Y = -2
-		pawn[2].X = 5
-		pawn[2].Y = 0
-		pawn[3].X = 6
-		pawn[3].Y = 0
+		currentPawn.bricksLocal = append(currentPawn.bricksLocal[:], raylib.Vector2{0, 0})
+		currentPawn.bricksLocal = append(currentPawn.bricksLocal[:], raylib.Vector2{0, -1})
+		currentPawn.bricksLocal = append(currentPawn.bricksLocal[:], raylib.Vector2{0, 1})
+		currentPawn.bricksLocal = append(currentPawn.bricksLocal[:], raylib.Vector2{1, 1})
 	case 4: // Tshape
-		pawn[0].X = 5
-		pawn[0].Y = -1
-		pawn[1].X = 4
-		pawn[1].Y = -1
-		pawn[2].X = 6
-		pawn[2].Y = -1
-		pawn[3].X = 5
-		pawn[3].Y = 0
+		currentPawn.bricksLocal = append(currentPawn.bricksLocal[:], raylib.Vector2{0, 0})
+		currentPawn.bricksLocal = append(currentPawn.bricksLocal[:], raylib.Vector2{1, 0})
+		currentPawn.bricksLocal = append(currentPawn.bricksLocal[:], raylib.Vector2{-1, 0})
+		currentPawn.bricksLocal = append(currentPawn.bricksLocal[:], raylib.Vector2{0, -1})
 	case 5: //Ishape
-		pawn[0].X = 5
-		pawn[0].Y = -2
-		pawn[1].X = 5
-		pawn[1].Y = -3
-		pawn[2].X = 5
-		pawn[2].Y = -1
-		pawn[3].X = 5
-		pawn[3].Y = 0
-	case 6: //Oshape //Doesn't matter since we won't rotate this
-		pawn[0].X = 5
-		pawn[0].Y = -1
-		pawn[1].X = 6
-		pawn[1].Y = -1
-		pawn[2].X = 5
-		pawn[2].Y = 0
-		pawn[3].X = 6
-		pawn[3].Y = 0
+		currentPawn.bricksLocal = append(currentPawn.bricksLocal[:], raylib.Vector2{0, 0})
+		currentPawn.bricksLocal = append(currentPawn.bricksLocal[:], raylib.Vector2{0, -1})
+		currentPawn.bricksLocal = append(currentPawn.bricksLocal[:], raylib.Vector2{0, -2})
+		currentPawn.bricksLocal = append(currentPawn.bricksLocal[:], raylib.Vector2{0, 1})
+	case 6: //Oshape
+		currentPawn.bricksLocal = append(currentPawn.bricksLocal[:], raylib.Vector2{0, 0})
+		currentPawn.bricksLocal = append(currentPawn.bricksLocal[:], raylib.Vector2{1, 0})
+		currentPawn.bricksLocal = append(currentPawn.bricksLocal[:], raylib.Vector2{1, -1})
+		currentPawn.bricksLocal = append(currentPawn.bricksLocal[:], raylib.Vector2{0, -1})
 
-	case 8:
-		for i := int8(0); i < 4; i++ {
-			pawn[i].X = 0
-			pawn[i].Y = 0
-		}
-	default:
 	}
 }
 
-func RotatePawn(pawn []raylib.Vector2, currentShape *int8, currentRotation *int8) { //Check if currentrot is same in main YOU ARE NOT USİNG POINTERS (i think)
-	fmt.Println("Before rot: ", *currentRotation, "    Pawn pos: ", pawn)
-	switch *currentShape { //Bet there is a better way of doing this... But WHO cares!
-	case 0: // Sshape
-		switch *currentRotation {
-		case 0:
-			if pawn[1].X-2 >= 0 && pawn[2].Y-2 >= 0 {
-				if !(PlayArea[int(pawn[1].Y)][int(pawn[1].X)-2].IsFull || PlayArea[int(pawn[2].Y)-2][int(pawn[2].X)].IsFull || PlayArea[int(pawn[3].Y)][int(pawn[3].X)].IsFull) {
-					pawn[1].X = pawn[1].X - 2
+func RotatePawn(pawn *pawn, rotation int) { //rotation = 1 is clockwise, rotation = -1 is anti-clockwise
 
-					pawn[2].Y = pawn[2].Y - 2
-					*currentRotation = 1
-				}
-			}
-		case 1:
-			if pawn[1].X+2 < 21 && pawn[2].Y+2 < 21 {
-				if !(PlayArea[int(pawn[1].Y)][int(pawn[1].X)+2].IsFull || PlayArea[int(pawn[2].Y)+2][int(pawn[2].X)].IsFull || PlayArea[int(pawn[3].Y)][int(pawn[3].X)].IsFull) {
-					pawn[1].X = pawn[1].X + 2
-
-					pawn[2].Y = pawn[2].Y + 2
-					*currentRotation = 0
-				}
-			}
+	if rotation == 1 { //clockwise
+		for i := 0; i < 4; i++ { //Turning clockwise
+			temp := pawn.bricksLocal[i].X
+			pawn.bricksLocal[i].X = pawn.bricksLocal[i].Y
+			pawn.bricksLocal[i].Y = -1 * temp
 		}
-	case 1: //Zshape
-		switch *currentRotation {
-		case 0:
-			if pawn[3].X-2 >= 0 && pawn[2].Y-2 >= 0 {
-				if !(PlayArea[int(pawn[1].Y)][int(pawn[1].X)].IsFull || PlayArea[int(pawn[2].Y)-2][int(pawn[2].X)].IsFull || PlayArea[int(pawn[3].Y)][int(pawn[3].X)-2].IsFull) {
-					pawn[3].X = pawn[3].X - 2
-					pawn[2].Y = pawn[2].Y - 2
-					*currentRotation = 1
-				}
-			}
-		case 1:
-			if pawn[3].X+2 < 10 && pawn[2].X+2 < 21 {
-				if !(PlayArea[int(pawn[1].Y)][int(pawn[1].X)].IsFull || PlayArea[int(pawn[2].Y)+2][int(pawn[2].X)].IsFull || PlayArea[int(pawn[3].Y)][int(pawn[3].X)+2].IsFull) {
-					pawn[3].X = pawn[3].X + 2
-					pawn[2].Y = pawn[2].Y + 2
-					*currentRotation = 0
-				}
-			}
-		}
-	case 2: //Jshape
-		switch *currentRotation {
-		case 0:
-			if pawn[1].X+1 < 10 && pawn[1].Y+1 < 21 || pawn[2].Y-1 >= 0 && pawn[3].X+1 < 10 {
-				if !(PlayArea[int(pawn[1].Y)+1][int(pawn[1].X)+1].IsFull || PlayArea[int(pawn[2].Y)-1][int(pawn[2].X)].IsFull || PlayArea[int(pawn[3].Y)][int(pawn[3].X)+1].IsFull) {
-					pawn[1].X = pawn[1].X + 1
-					pawn[1].Y = pawn[1].Y + 1
-
-					pawn[2].Y = pawn[2].Y - 1
-
-					pawn[3].X = pawn[3].X + 1
-					*currentRotation = 1
-				}
-			}
-		case 1:
-			if pawn[1].Y-1 >= 0 || pawn[2].X+1 < 10 && pawn[2].Y-1 >= 0 && pawn[3].X-1 >= 0 {
-				if !(PlayArea[int(pawn[1].Y)-1][int(pawn[1].X)].IsFull || PlayArea[int(pawn[2].Y)-1][int(pawn[2].X)+1].IsFull || PlayArea[int(pawn[3].Y)][int(pawn[3].X)-1].IsFull) {
-					pawn[1].Y = pawn[1].Y - 1
-
-					pawn[2].X = pawn[2].X + 1
-					pawn[2].Y = pawn[2].Y - 1
-
-					pawn[3].X = pawn[3].X - 1
-					*currentRotation = 2
-				}
-			}
-		case 2:
-			if pawn[1].Y+1 < 21 && pawn[2].X-1 >= 0 && pawn[3].X-1 >= 0 && pawn[3].Y-1 >= 0 {
-				if !(PlayArea[int(pawn[1].Y)+1][int(pawn[1].X)].IsFull || PlayArea[int(pawn[2].Y-2)][int(pawn[2].X)].IsFull || PlayArea[int(pawn[3].Y)-1][int(pawn[3].X)-1].IsFull) {
-					pawn[1].Y = pawn[1].Y + 1
-
-					pawn[2].X = pawn[2].X - 1
-
-					pawn[3].X = pawn[3].X - 1
-					pawn[3].Y = pawn[3].Y - 1
-					*currentRotation = 3
-				}
-			}
-		case 3:
-			if pawn[1].X-1 >= 0 && pawn[1].Y-1 >= 0 && pawn[2].Y+2 < 21 && pawn[3].X+1 < 10 && pawn[3].Y < 21 {
-				if !(PlayArea[int(pawn[1].Y)-1][int(pawn[1].X)-1].IsFull || PlayArea[int(pawn[2].Y)+2][int(pawn[2].X)].IsFull || PlayArea[int(pawn[3].Y)+1][int(pawn[3].X)+1].IsFull) {
-					pawn[1].X = pawn[1].X - 1
-					pawn[1].Y = pawn[1].Y - 1
-
-					pawn[2].Y = pawn[2].Y + 2
-
-					pawn[3].X = pawn[3].X + 1
-					pawn[3].Y = pawn[3].Y + 1
-					*currentRotation = 0
-				}
-			}
-		}
-
-	case 3: //Lshape //CHECK THE EXPCEPTIONS
-		switch *currentRotation {
-		case 0:
-			if pawn[1].X-1 >= 0 && pawn[1].Y+1 < 21 && pawn[2].X-1 >= 0 && pawn[3].Y-1 >= 0 {
-				if !(PlayArea[int(pawn[1].Y)+1][int(pawn[1].X)-1].IsFull || PlayArea[int(pawn[2].Y)][int(pawn[2].X)-1].IsFull || PlayArea[int(pawn[3].Y)-1][int(pawn[3].X)].IsFull) {
-					pawn[1].X = pawn[1].X - 1
-					pawn[1].Y = pawn[1].Y + 1
-
-					pawn[2].X = pawn[2].X - 1
-
-					pawn[3].Y = pawn[3].Y - 1
-					*currentRotation = 1
-				}
-			}
-		case 1:
-			if pawn[1].Y-1 >= 0 && pawn[2].X+1 < 10 && pawn[3].X-1 >= 0 && pawn[3].Y-1 >= 0 {
-				if !(PlayArea[int(pawn[1].Y)-1][int(pawn[1].X)].IsFull || PlayArea[int(pawn[2].Y)][int(pawn[2].X)].IsFull || PlayArea[int(pawn[3].Y)][int(pawn[3].X)].IsFull) {
-					pawn[1].Y = pawn[1].Y - 1
-
-					pawn[2].X = pawn[2].X + 1
-
-					pawn[3].X = pawn[3].X - 1
-					pawn[3].Y = pawn[3].Y - 1
-					*currentRotation = 2
-				}
-			}
-		case 2:
-			if pawn[1].Y+1 < 21 && pawn[2].X+1 < 21 && pawn[2].Y-1 >= 0 && pawn[3].X+1 < 10 {
-				if !(PlayArea[int(pawn[1].Y)+1][int(pawn[1].X)].IsFull || PlayArea[int(pawn[2].Y-1)][int(pawn[2].X+1)].IsFull || PlayArea[int(pawn[3].Y)][int(pawn[3].X+1)].IsFull) {
-					pawn[1].Y = pawn[1].Y + 1
-
-					pawn[2].X = pawn[2].X + 1
-					pawn[2].Y = pawn[2].Y - 1
-
-					pawn[3].X = pawn[3].X + 1
-					*currentRotation = 3
-				}
-			}
-
-		case 3:
-			if pawn[1].X+1 < 10 && pawn[1].Y-1 >= 0 && pawn[2].X-1 >= 0 && pawn[2].Y+1 < 21 && pawn[3].Y+2 < 21 {
-				if !(PlayArea[int(pawn[1].Y)-1][int(pawn[1].X)+1].IsFull || PlayArea[int(pawn[2].Y)+1][int(pawn[2].X)-1].IsFull || PlayArea[int(pawn[3].Y)+2][int(pawn[3].X)].IsFull) {
-					pawn[1].X = pawn[1].X + 1
-					pawn[1].Y = pawn[1].Y - 1
-
-					pawn[2].X = pawn[2].X - 1
-					pawn[2].Y = pawn[2].Y + 1
-
-					pawn[3].Y = pawn[3].Y + 2
-					*currentRotation = 0
-				}
-			}
-		}
-	case 4: //Tshape //CHECK EXPECTIONS
-
-		switch *currentRotation {
-		case 0:
-			if pawn[2].X-1 >= 0 && pawn[2].Y-1 >= 0 {
-				if !(PlayArea[int(pawn[1].Y)][int(pawn[1].X)].IsFull || PlayArea[int(pawn[2].Y)-1][int(pawn[2].X)-1].IsFull || PlayArea[int(pawn[3].Y)][int(pawn[3].X)].IsFull) {
-					pawn[2].X = pawn[2].X - 1
-					pawn[2].Y = pawn[2].Y - 1
-					*currentRotation = 1
-				}
-			}
-		case 1:
-			if pawn[3].Y-1 >= 0 && pawn[3].X+1 < 10 {
-				if !(PlayArea[int(pawn[1].Y)][int(pawn[1].X)].IsFull || PlayArea[int(pawn[2].Y)][int(pawn[2].X)].IsFull || PlayArea[int(pawn[3].Y)-1][int(pawn[3].X)+1].IsFull) {
-					pawn[3].Y = pawn[3].Y - 1
-					pawn[3].X = pawn[3].X + 1
-					*currentRotation = 2
-				}
-			}
-		case 2:
-			if pawn[1].X+1 < 10 && pawn[1].Y+1 < 21 {
-				if !(PlayArea[int(pawn[1].Y)+1][int(pawn[1].X)+1].IsFull || PlayArea[int(pawn[2].Y)][int(pawn[2].X)].IsFull || PlayArea[int(pawn[3].Y)][int(pawn[3].X)].IsFull) {
-					pawn[1].X = pawn[1].X + 1
-					pawn[1].Y = pawn[1].Y + 1
-					*currentRotation = 3
-				}
-			}
-		case 3:
-			if pawn[2].X+1 < 10 && pawn[2].Y+1 < 21 && pawn[1].X-1 >= 0 && pawn[1].Y-1 >= 0 && pawn[3].X-1 >= 0 && pawn[3].Y+1 < 21 {
-				if !(PlayArea[int(pawn[1].Y)-1][int(pawn[1].X)-1].IsFull || PlayArea[int(pawn[2].Y)+1][int(pawn[2].X)+1].IsFull || PlayArea[int(pawn[3].Y)+1][int(pawn[3].X)-1].IsFull) {
-					pawn[2].X = pawn[2].X + 1
-					pawn[2].Y = pawn[2].Y + 1
-
-					pawn[1].X = pawn[1].X - 1
-					pawn[1].Y = pawn[1].Y - 1
-
-					pawn[3].X = pawn[3].X - 1
-					pawn[3].Y = pawn[3].Y + 1
-					*currentRotation = 0
-				}
-			}
-		}
-
-	case 5:
-		switch *currentRotation {
-		case 0:
-			if pawn[1].X-1 >= 0 && pawn[1].Y+1 < 21 && pawn[2].X+1 < 10 && pawn[2].Y-1 >= 0 && pawn[3].X+2 < 10 && pawn[3].Y-2 >= 0 {
-				if !(PlayArea[int(pawn[1].Y)+1][int(pawn[1].X)-1].IsFull || PlayArea[int(pawn[2].Y)-1][int(pawn[2].X)+1].IsFull || PlayArea[int(pawn[3].Y)-2][int(pawn[3].X)+2].IsFull) {
-					pawn[1].X = pawn[1].X - 1
-					pawn[1].Y = pawn[1].Y + 1
-
-					pawn[2].X = pawn[2].X + 1
-					pawn[2].Y = pawn[2].Y - 1
-
-					pawn[3].X = pawn[3].X + 2
-					pawn[3].Y = pawn[3].Y - 2
-					*currentRotation = 1
-				}
-			}
-		case 1:
-			if pawn[1].X+1 < 10 && pawn[1].Y-1 >= 0 && pawn[2].X-1 >= 0 && pawn[2].Y+1 < 21 && pawn[3].X-2 >= 0 && pawn[3].Y+2 < 21 {
-				if !(PlayArea[int(pawn[1].Y)-1][int(pawn[1].X)+1].IsFull || PlayArea[int(pawn[2].Y)+1][int(pawn[2].X)-1].IsFull || PlayArea[int(pawn[3].Y)+2][int(pawn[3].X)-2].IsFull) {
-					pawn[1].X = pawn[1].X + 1
-					pawn[1].Y = pawn[1].Y - 1
-
-					pawn[2].X = pawn[2].X - 1
-					pawn[2].Y = pawn[2].Y + 1
-
-					pawn[3].X = pawn[3].X - 2
-					pawn[3].Y = pawn[3].Y + 2
-					*currentRotation = 0
-				}
-			}
+	} else {
+		for i := 0; i < 4; i++ { //Turning anti-clockwise
+			temp := pawn.bricksLocal[i].X
+			pawn.bricksLocal[i].X = -1 * pawn.bricksLocal[i].Y
+			pawn.bricksLocal[i].Y = temp
 		}
 	}
+
+	for i := 0; i < 4; i++ { //Undo the changes if bricks are out of bounds
+		//This is inefficent and can potentially cause problems
+		//But it is the simplest solution i can think of
+		newLocation := raylib.Vector2{
+			pawn.bricksLocal[i].X + pawn.originPoint.X,
+			pawn.bricksLocal[i].Y + pawn.originPoint.Y}
+		if (newLocation.X < 0 || newLocation.X > 9) || (newLocation.Y > 20) || (newLocation.Y >= 0 && PlayArea[int(newLocation.Y)][int(newLocation.X)].IsFull) {
+			RotatePawn(pawn, -rotation) //Rotate it to the opposite direction to undo
+			return
+		}
+	}
+
 }
+
 func updateNextShape(shapes []int8) {
 	for i := int8(0); i < 4; i++ {
 		shapes[i] = shapes[i+1]
@@ -433,20 +172,17 @@ func updateNextShape(shapes []int8) {
 
 func main() {
 
-	var pawn [4]raylib.Vector2
+	var pawn pawn
 	var nextShapes [5]int8
 
-	var isDeleted bool = false
 	var frame int64
-	var gameOver bool = false
+
 	var isFallen bool = false
 	var gameSpeed float32
 
 	var cs int8 = 0
-	var cr int8 = 0
 
 	var currentShape *int8 = &cs
-	var currentRotation *int8 = &cr
 
 	rand.Seed(time.Now().UTC().UnixNano())
 
@@ -461,115 +197,59 @@ func main() {
 	raylib.SetTargetFPS(60)
 
 	CheckFullLine()
-	Createpawn(pawn[:], nextShapes[0])
+	Createpawn(&pawn, nextShapes[0])
 	*currentShape = nextShapes[0]
-	*currentRotation = 0
 	updateNextShape(nextShapes[:])
 
 	for !raylib.WindowShouldClose() { //Game loop
-
 		if !gameOver { //Checking for keys
 			if raylib.IsKeyPressed(raylib.KeyJ) { //J is left
-
-				MovePawn(pawn[:], 1)
-
+				MovePawn(&pawn, raylib.Vector2{-1, 0})
 			}
-			if raylib.IsKeyPressed(raylib.KeyL) { //J is left
-				MovePawn(pawn[:], 2)
+			if raylib.IsKeyPressed(raylib.KeyL) { //L is Right
+				MovePawn(&pawn, raylib.Vector2{1, 0})
 			}
 			if raylib.IsKeyDown(raylib.KeyM) { //M is soft drop
+
 				if frame%2 == 0 {
-					isFallen = MovePawn(pawn[:], 3)
-					if isFallen {
-						for i := 0; i < 4; i++ {
-							if pawn[i].Y < 0 {
-								gameOver = true
-								fmt.Println("Game over called in soft drop!")
-								break
-							} else {
-								PlayArea[int(pawn[i].Y)][int(pawn[i].X)].IsFull = true
-							}
-						}
-						if !gameOver {
-							Createpawn(pawn[:], nextShapes[0])
-							*currentShape = nextShapes[0]
-							*currentRotation = 0
-							updateNextShape(nextShapes[:])
-						}
+					isFallen = MovePawn(&pawn, raylib.Vector2{0, 1})
+					if isFallen && !gameOver {
+
+						Createpawn(&pawn, nextShapes[0])
+						*currentShape = nextShapes[0]
+						updateNextShape(nextShapes[:])
+
 					}
 				}
 
 			}
 			if raylib.IsKeyPressed(raylib.KeySpace) { //Space is hard drop
-				MovePawn(pawn[:], 4)
-
-				for i := 0; i < 4; i++ {
-
-					if pawn[i].Y < 0 {
-						fmt.Println("Game over called in hard drop!")
-						gameOver = true
-					}
-					if pawn[i].Y > 0 {
-						PlayArea[int(pawn[i].Y)][int(pawn[i].X)].IsFull = true
-					}
+				for !isFallen {
+					isFallen = MovePawn(&pawn, raylib.Vector2{0, 1})
 				}
 				isFallen = false
-				Createpawn(pawn[:], nextShapes[0])
+				Createpawn(&pawn, nextShapes[0])
 				*currentShape = nextShapes[0]
-				*currentRotation = 0
 				updateNextShape(nextShapes[:])
 
 			}
-			if raylib.IsKeyPressed(raylib.KeyK) { //K is rotate left
-
-				RotatePawn(pawn[:], currentShape, currentRotation)
-				fmt.Println(*currentRotation)
-
+			if raylib.IsKeyPressed(raylib.KeyK) { //K is rotate clockwise
+				RotatePawn(&pawn, 1)
 			}
-		}
+			if raylib.IsKeyPressed(raylib.KeyU) { //U is rotate anti-clockwise
+				RotatePawn(&pawn, -1)
+			}
 
-		//Ensuring top row is always empty
-		for i := int32(0); i < 10; i++ {
-			PlayArea[0][i].IsFull = false
-		}
-
-		frame++
-		if !gameOver {
 			gameSpeed = 60 * scoreMultiplier
-			fmt.Println(gameSpeed)
 			if frame%int64(gameSpeed) == 0 {
-				isFallen = MovePawn(pawn[:], 0)
+				isFallen = MovePawn(&pawn, raylib.Vector2{0, 1})
 
 				if isFallen {
-
-					for i := 0; i < 4; i++ {
-
-						if pawn[i].Y < 0 {
-							fmt.Println("Game over called in main!")
-							gameOver = true
-						}
-						if pawn[i].Y > 0 {
-							PlayArea[int(pawn[i].Y)][int(pawn[i].X)].IsFull = true
-						}
-					}
 					if !gameOver {
-						Createpawn(pawn[:], nextShapes[0])
+						Createpawn(&pawn, nextShapes[0])
 						*currentShape = nextShapes[0]
-						*currentRotation = 0
 						updateNextShape(nextShapes[:])
-					} else {
-						if !isDeleted {
-							Createpawn(pawn[:], nextShapes[0])
-							*currentShape = nextShapes[0]
-							*currentRotation = 0
-							updateNextShape(nextShapes[:])
-							isFallen = false
-							isDeleted = true
-						}
 					}
-
-				} else {
-
 				}
 			}
 		}
@@ -589,9 +269,13 @@ func main() {
 			}
 		}
 
-		for i := 0; i < 4; i++ { //Draw the current falling piece //AKA "The Mighty Pawn"
-			if pawn[i].Y > 0 {
-				raylib.DrawRectangle(int32(pawn[i].X)*TotalBrickSize+BorderSize, (int32(pawn[i].Y)-1)*TotalBrickSize+BorderSize, BrickSize+BorderSize, BrickSize+BorderSize, raylib.Color{0, 255, 0, 255})
+		for i := 0; i < 4; i++ { //Draw the current falling piece
+
+			if pawn.bricksLocal[i].Y+pawn.originPoint.Y > 0 {
+				raylib.DrawRectangle(
+					int32(pawn.bricksLocal[i].X+pawn.originPoint.X)*TotalBrickSize+BorderSize,
+					(int32(pawn.bricksLocal[i].Y+pawn.originPoint.Y)-1)*TotalBrickSize+BorderSize,
+					BrickSize+BorderSize, BrickSize+BorderSize, raylib.Color{0, 255, 0, 255})
 			}
 		}
 
@@ -604,6 +288,7 @@ func main() {
 		}
 
 		raylib.EndDrawing()
+		frame++
 	}
 
 	raylib.CloseWindow()
